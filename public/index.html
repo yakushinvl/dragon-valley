@@ -212,6 +212,10 @@
         <div class="panel-stat">
           ⭐ Уровни: <span id="total-levels">—</span>
         </div>
+        <button class="subj-btn quest-log-btn" onclick="toggleQuestPanel()">
+          <span class="subj-icon">📜</span>
+          <span class="subj-label">Журнал заданий</span>
+        </button>
       </aside>
 
       <!-- Pannable / zoomable world map -->
@@ -244,6 +248,33 @@
           <button class="home-modal__close" id="home-modal-close" type="button">Закрыть</button>
         </div>
       </div>
+    </div>
+
+    <!-- Панель управления заданиями (Quest Panel) -->
+    <div class="quest-panel hidden" id="quest-panel">
+        <div class="quest-panel__backdrop" onclick="toggleQuestPanel()"></div>
+        <div class="quest-panel__content">
+            <div class="quest-panel__header">
+                <h2>📜 Журнал приключений</h2>
+                <button class="quest-panel__close" onclick="toggleQuestPanel()">✕</button>
+            </div>
+            <div class="quest-panel__list" id="quest-list">
+                <!-- Задания будут здесь -->
+                <div class="loading"><div class="spinner"></div>Загружаем свитки…</div>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <!-- LOADING WORLD SCREEN -->
+  <div id="loading-world" style="display:none">
+    <div class="loading-content">
+      <img src="sirdragon.png" class="loading-dragon" alt="Загрузка" />
+      <div class="loading-text">Пробуждаем магию мира...</div>
+      <div class="progress-container">
+        <div class="progress-bar" id="load-progress-bar"></div>
+      </div>
+      <div class="loading-hint">Драконы любят, когда дети решают задачки правильно!</div>
     </div>
   </div>
 
@@ -322,6 +353,18 @@
 </div>
 
 <script>
+  // ── Auto-skip Intro ────────────────────────────────────────
+  (function() {
+    const savedName = sessionStorage.getItem('playerName');
+    if (savedName) {
+      // Hide intro immediately before it's even fully rendered
+      document.getElementById('intro-scene').style.display = 'none';
+      document.getElementById('main-app').style.display = 'block';
+      document.getElementById('map-screen').classList.add('active');
+      document.getElementById('map-welcome').textContent = 'С возвращением, ' + savedName + '! 👋';
+    }
+  })();
+
   // ── Intro logic ────────────────────────────────────────────
   let _gender = '';
 
@@ -356,16 +399,10 @@
     // Show map welcome
     document.getElementById('map-welcome').textContent = 'Привет, ' + name + '! 👋';
 
-    // Transition
-    document.getElementById('intro-scene').classList.add('out');
-    setTimeout(() => {
-      document.getElementById('intro-scene').style.display = 'none';
-      document.getElementById('main-app').style.display = 'block';
-      document.getElementById('map-screen').classList.add('active');
-      // Карта инициализировалась со скрытым контейнером (width=0).
-      // Триггерим resize, чтобы centerWorld() пересчитал размеры.
-      window.dispatchEvent(new Event('resize'));
-    }, 580);
+    // Transition via app.js
+    if (window.initWorldSequence) {
+      window.initWorldSequence();
+    }
   }
 
   // ── Subject nav ────────────────────────────────────────────

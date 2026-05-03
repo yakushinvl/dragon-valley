@@ -735,9 +735,143 @@ $confirmReadBtn.addEventListener('click', () => {
 // ─── Инициализация ────────────────────────────────────────────────────────────
 
 (async () => {
-  await loadDragons();
-  await loadProgress();
+  // If we are already past the intro (e.g. refresh), load data
+  if (sessionStorage.getItem('playerName')) {
+    await loadDragons();
+    await loadProgress();
+  }
 })();
+
+// ─── World Loading Sequence ──────────────────────────────────────────────────
+
+window.initWorldSequence = async function() {
+  const intro   = document.getElementById('intro-scene');
+  const loading = document.getElementById('loading-world');
+  const bar     = document.getElementById('load-progress-bar');
+  const app     = document.getElementById('main-app');
+  const mapScr  = document.getElementById('map-screen');
+
+  if (!intro || !loading || !bar || !app) return;
+
+  // Start transition
+  intro.classList.add('out');
+  
+  await new Promise(r => setTimeout(r, 550));
+  intro.style.display = 'none';
+  loading.style.display = 'flex';
+  
+  // Progress simulation + real data loading
+  bar.style.width = '15%';
+  await new Promise(r => setTimeout(r, 600));
+  
+  bar.style.width = '45%';
+  try { await loadDragons(); } catch(e) {}
+  
+  bar.style.width = '75%';
+  try { await loadProgress(); } catch(e) {}
+  
+  await new Promise(r => setTimeout(r, 400));
+  bar.style.width = '100%';
+  
+  await new Promise(r => setTimeout(r, 600));
+  
+  // Show app
+  loading.style.opacity = '0';
+  loading.style.transition = 'opacity 0.5s ease';
+  
+  setTimeout(() => {
+    loading.style.display = 'none';
+    app.style.display = 'block';
+    mapScr.classList.add('active');
+    
+    // Zoom in to the house (coords ~45.5%, 39%)
+    if (window.mapView) {
+      window.mapView.focusOnPoint(0.455, 0.39, 2.2);
+    } else {
+      window.dispatchEvent(new Event('resize'));
+    }
+    
+    // Check for first-time story dialogue
+    checkInitialDialogue();
+  }, 500);
+};
+
+// ─── Initial Dialogue ────────────────────────────────────────────────────────
+
+const STORY_SHOWN_KEY = 'story_dialogue_shown';
+
+function checkInitialDialogue() {
+  if (localStorage.getItem(STORY_SHOWN_KEY)) return;
+  
+  const name = sessionStorage.getItem('playerName') || 'путешественник';
+  
+  // We reuse the home-modal for the initial story
+  const modal   = document.getElementById('home-modal');
+  const textEl  = document.getElementById('home-modal-text');
+  const statsEl = document.getElementById('home-modal-stats');
+  if (!modal || !textEl) return;
+
+  textEl.innerHTML = 
+    `Привет, ${name}! Ты вовремя! 🐉<br><br>` +
+    `Драконляндия — это древний мир, где магия питается знаниями. ` +
+    `Раньше все драконы жили дружно, но сейчас они заскучали и спрятались по своим домам.<br><br>` +
+    `Твой <strong>Центральный Дом</strong> (куда ты можешь зайти, нажав на него) — это твоя база. ` +
+    `Там я буду собирать для тебя статистику твоих успехов. Помогай драконам, и мир снова засияет красками!`;
+  
+  statsEl.classList.add('hidden');
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+  
+  localStorage.setItem(STORY_SHOWN_KEY, 'true');
+}
+
+// ─── Quest Panel (Journal) ───────────────────────────────────────────────────
+
+window.toggleQuestPanel = function() {
+  const panel = document.getElementById('quest-panel');
+  if (!panel) return;
+  
+  const isHidden = panel.classList.contains('hidden');
+  if (isHidden) {
+    panel.classList.remove('hidden');
+    renderQuestPanel();
+  } else {
+    panel.classList.add('hidden');
+  }
+};
+
+async function renderQuestPanel() {
+  const listEl = document.getElementById('quest-list');
+  if (!listEl) return;
+  
+  listEl.innerHTML = '<div class="loading"><div class="spinner"></div>Смотрим в свитки…</div>';
+  
+  try {
+    const dragons = await apiFetch('/dragons');
+    if (!dragons.length) {
+      listEl.innerHTML = '<p style="text-align:center;color:var(--muted)">Заданий пока нет. Исследуй мир!</p>';
+      return;
+    }
+    
+    listEl.innerHTML = dragons.map(d => {
+      const meta = DRAGON_META[d.type];
+      const status = d.level >= 5 ? '🏆 Мастер' : `Уровень ${d.level} (${d.xp} XP)`;
+      return `
+        <div class="quest-item" data-type="${d.type}">
+          <div class="quest-item__head">
+            <span style="font-size:20px">${meta.emoji}</span>
+            <div class="quest-item__type">${meta.label}</div>
+          </div>
+          <div class="quest-item__title">Помощь ${meta.name}</div>
+          <div class="quest-item__status">${status}</div>
+        </div>
+      `;
+    }).join('');
+    
+  } catch (e) {
+    listEl.innerHTML = `<p style="color:var(--math)">Ошибка загрузки: ${e.message}</p>`;
+  }
+}
 
 
 // ── Map panel hook ────────────────────────────────────────────────────────────
@@ -747,66 +881,98 @@ window._openDragonType = function(type) {
 };
 
 // ── Pan & Zoom for map canvas ─────────────────────────────────────────────────
+
+window.mapView = {
+  scale: 1,
+  ox: 0,
+  oy: 0,
+  WORLD_W: 2400,
+  WORLD_H: 2400,
+  MAX_SCALE: 3.5,
+
+  apply: function() {
+    const world = document.querySelector('.map-world');
+    if (world) world.style.transform = `translate(${this.ox}px, ${this.oy}px) scale(${this.scale})`;
+  },
+
+  getMinScale: function() {
+    const canvas = document.querySelector('.map-canvas');
+    if (!canvas) return 1;
+    const cw = canvas.clientWidth  || 1;
+    const ch = canvas.clientHeight || 1;
+    return Math.max(cw / this.WORLD_W, ch / this.WORLD_H);
+  },
+
+  clamp: function() {
+    const canvas = document.querySelector('.map-canvas');
+    if (!canvas) return;
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    const ww = this.WORLD_W * this.scale;
+    const wh = this.WORLD_H * this.scale;
+
+    // Scale
+    const minS = this.getMinScale();
+    if (this.scale < minS) this.scale = minS;
+    if (this.scale > this.MAX_SCALE) this.scale = this.MAX_SCALE;
+
+    // Pan
+    if (ww >= cw) this.ox = Math.min(0, Math.max(cw - ww, this.ox));
+    else          this.ox = (cw - ww) / 2;
+
+    if (wh >= ch) this.oy = Math.min(0, Math.max(ch - wh, this.oy));
+    else          this.oy = (ch - wh) / 2;
+  },
+
+  center: function() {
+    this.scale = this.getMinScale();
+    const canvas = document.querySelector('.map-canvas');
+    if (!canvas) return;
+    this.ox = (canvas.clientWidth - this.WORLD_W * this.scale) / 2;
+    this.oy = (canvas.clientHeight - this.WORLD_H * this.scale) / 2;
+    this.clamp();
+    this.apply();
+  },
+
+  focusOnPoint: function(x_pct, y_pct, targetScale) {
+    const canvas = document.querySelector('.map-canvas');
+    if (!canvas) return;
+    if (targetScale) this.scale = targetScale;
+    this.clamp(); 
+    
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    
+    this.ox = cw / 2 - (this.WORLD_W * x_pct * this.scale);
+    this.oy = ch / 2 - (this.WORLD_H * y_pct * this.scale);
+    
+    this.clamp();
+    this.apply();
+  }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.querySelector('.map-canvas');
   const world  = document.querySelector('.map-world');
   if (!canvas || !world) return;
 
-  // Размеры мира (квадратная карта map.png)
-  const WORLD_W = 2400, WORLD_H = 2400;
-
-  let scale  = 1;
-  let ox = 0, oy = 0;          // current pan offset
   let dragging = false;
   let startX, startY, startOx, startOy;
-
-  const MAX_SCALE = 3;
-  // Минимальный зум вычисляется динамически: карта должна покрывать канвас
-  function getMinScale() {
-    const cw = canvas.clientWidth  || 1;
-    const ch = canvas.clientHeight || 1;
-    return Math.max(cw / WORLD_W, ch / WORLD_H);
-  }
-
-  function applyTransform() {
-    world.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
-  }
-
-  // Жёсткая фиксация: за край карты выходить нельзя.
-  function clampPan() {
-    const cw = canvas.clientWidth;
-    const ch = canvas.clientHeight;
-    const ww = WORLD_W * scale;
-    const wh = WORLD_H * scale;
-
-    if (ww >= cw) ox = Math.min(0, Math.max(cw - ww, ox));
-    else          ox = (cw - ww) / 2;       // мир уже канваса — центрируем
-
-    if (wh >= ch) oy = Math.min(0, Math.max(ch - wh, oy));
-    else          oy = (ch - wh) / 2;
-  }
-
-  // Не даём отдалить так, чтобы за краем карты появилась пустота
-  function clampScale() {
-    const minS = getMinScale();
-    if (scale < minS) scale = minS;
-    if (scale > MAX_SCALE) scale = MAX_SCALE;
-  }
 
   // Mouse drag
   canvas.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
     dragging = true;
     startX = e.clientX; startY = e.clientY;
-    startOx = ox; startOy = oy;
+    startOx = window.mapView.ox; startOy = window.mapView.oy;
     e.preventDefault();
   });
   window.addEventListener('mousemove', e => {
     if (!dragging) return;
-    ox = startOx + (e.clientX - startX);
-    oy = startOy + (e.clientY - startY);
-    clampPan();
-    applyTransform();
+    window.mapView.ox = startOx + (e.clientX - startX);
+    window.mapView.oy = startOy + (e.clientY - startY);
+    window.mapView.clamp();
+    window.mapView.apply();
   });
   window.addEventListener('mouseup', () => { dragging = false; });
 
@@ -816,7 +982,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.touches.length === 1) {
       lastTouchX = e.touches[0].clientX;
       lastTouchY = e.touches[0].clientY;
-      startOx = ox; startOy = oy;
+      startOx = window.mapView.ox; startOy = window.mapView.oy;
     } else if (e.touches.length === 2) {
       lastDist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
@@ -829,22 +995,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.touches.length === 1) {
       const dx = e.touches[0].clientX - lastTouchX;
       const dy = e.touches[0].clientY - lastTouchY;
-      ox = ox + dx; oy = oy + dy;
+      window.mapView.ox += dx; 
+      window.mapView.oy += dy;
       lastTouchX = e.touches[0].clientX;
       lastTouchY = e.touches[0].clientY;
-      clampPan();
-      applyTransform();
+      window.mapView.clamp();
+      window.mapView.apply();
     } else if (e.touches.length === 2 && lastDist) {
       const dist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
       const delta = dist / lastDist;
-      scale = scale * delta;
-      clampScale();
+      window.mapView.scale *= delta;
+      window.mapView.clamp();
       lastDist = dist;
-      clampPan();
-      applyTransform();
+      window.mapView.clamp();
+      window.mapView.apply();
     }
     e.preventDefault();
   }, { passive: false });
@@ -856,45 +1023,45 @@ document.addEventListener('DOMContentLoaded', () => {
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.12 : 0.9;
-    let newScale = scale * zoomFactor;
-    newScale = Math.min(MAX_SCALE, Math.max(getMinScale(), newScale));
+    let oldScale = window.mapView.scale;
+    window.mapView.scale *= zoomFactor;
+    window.mapView.clamp();
 
     // Zoom toward mouse cursor
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    ox = mx - (mx - ox) * (newScale / scale);
-    oy = my - (my - oy) * (newScale / scale);
-    scale = newScale;
-    clampPan();
-    applyTransform();
+    window.mapView.ox = mx - (mx - window.mapView.ox) * (window.mapView.scale / oldScale);
+    window.mapView.oy = my - (my - window.mapView.oy) * (window.mapView.scale / oldScale);
+    
+    window.mapView.clamp();
+    window.mapView.apply();
   }, { passive: false });
 
   // Zoom buttons
   const zoomIn  = document.getElementById('map-zoom-in');
   const zoomOut = document.getElementById('map-zoom-out');
   if (zoomIn) zoomIn.addEventListener('click', () => {
-    scale = Math.min(MAX_SCALE, scale * 1.25);
-    clampPan(); applyTransform();
+    window.mapView.scale *= 1.25;
+    window.mapView.clamp(); 
+    window.mapView.apply();
   });
   if (zoomOut) zoomOut.addEventListener('click', () => {
-    scale = Math.max(getMinScale(), scale / 1.25);
-    clampPan(); applyTransform();
+    window.mapView.scale /= 1.25;
+    window.mapView.clamp(); 
+    window.mapView.apply();
   });
 
-  // Initial center: вписываем карту так, чтобы она целиком покрывала канвас.
-  const centerWorld = () => {
-    const cw = canvas.clientWidth;
-    const ch = canvas.clientHeight;
-    if (!cw || !ch) return;            // ещё скрыт
-    scale = getMinScale();              // минимальный «cover»-зум
-    ox = (cw - WORLD_W * scale) / 2;
-    oy = (ch - WORLD_H * scale) / 2;
-    clampPan();
-    applyTransform();
-  };
-  centerWorld();
-  window.addEventListener('resize', centerWorld);
+  // Initial center
+  if (sessionStorage.getItem('playerName')) {
+    window.mapView.focusOnPoint(0.455, 0.39, 2.2);
+  } else {
+    window.mapView.center();
+  }
+  window.addEventListener('resize', () => {
+    // Only auto-center if we are at min zoom (or just center anyway for safety)
+    window.mapView.center();
+  });
 
   // ── Кликабельный дом ──────────────────────────────────
   // Не даём драгу карты «съесть» клик: если пользователь начал тянуть,
