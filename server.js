@@ -1,5 +1,5 @@
 // server.js — точка входа
-
+require('dotenv').config();
 const express        = require('express');
 const path           = require('path');
 const { initDb }     = require('./src/db');

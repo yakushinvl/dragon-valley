@@ -98,36 +98,48 @@ router.get('/progress', (req, res) => {
 });
 
 // ── Утилита: вызов OpenRouter (текстовая проверка ответа) ────────────────────
+require('dotenv').config();
+
 function callOpenRouter(messages, { model = 'meta-llama/llama-3.3-70b-instruct:free', maxTokens = 250 } = {}) {
-  return new Promise((resolve, reject) => {
-    const apiKey = process.env.OPENROUTER_API_KEY || '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';
-    const body = JSON.stringify({ model, max_tokens: maxTokens, messages });
-    const opts = {
-      hostname: 'openrouter.ai',
-      path: '/api/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer':  'http://localhost:3000',
-        'X-Title':       'Dragon Meadow',
-        'Content-Length': Buffer.byteLength(body),
-      },
-    };
-    const r = https.request(opts, resp => {
-      let data = '';
-      resp.on('data', ch => { data += ch; });
-      resp.on('end', () => {
-        try {
-          const j = JSON.parse(data);
-          resolve(j?.choices?.[0]?.message?.content || '');
-        } catch (e) { reject(new Error('Bad LLM response: ' + e.message)); }
-      });
+    return new Promise((resolve, reject) => {
+        const apiKey = process.env.OPENROUTER_API_KEY;
+
+        if (!apiKey) {
+            return reject(new Error('API key not found in .env'));
+        }
+
+        const body = JSON.stringify({ model, max_tokens: maxTokens, messages });
+
+        const opts = {
+            hostname: 'openrouter.ai',
+            path: '/api/v1/chat/completions',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+                'HTTP-Referer': 'http://localhost:3000',
+                'X-Title': 'Dragon Meadow',
+                'Content-Length': Buffer.byteLength(body),
+            },
+        };
+
+        const r = https.request(opts, resp => {
+            let data = '';
+            resp.on('data', ch => { data += ch; });
+            resp.on('end', () => {
+                try {
+                    const j = JSON.parse(data);
+                    resolve(j?.choices?.[0]?.message?.content || '');
+                } catch (e) {
+                    reject(new Error('Bad LLM response: ' + e.message));
+                }
+            });
+        });
+
+        r.on('error', reject);
+        r.write(body);
+        r.end();
     });
-    r.on('error', reject);
-    r.write(body);
-    r.end();
-  });
 }
 
 // POST /verify-text — ребёнок ввёл развёрнутый ответ на задание (русский/логика/мир)
