@@ -1,0 +1,13 @@
+{
+  "name": "dragon-meadow",
+  "version": "1.0.0",
+  "description": "Драконья Долина — фиджитал-игра для детей",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sql.js": "^1.12.0"
+  }
+}
