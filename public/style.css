@@ -817,8 +817,6 @@ body::before {
 /* ── Дома на карте ─────────────────────────────────────── */
 .map-house {
   position: absolute;
-  width: 300px; /* Примерный размер */
-  aspect-ratio: 1 / 1;
   padding: 0;
   margin: 0;
   background: transparent;
@@ -839,12 +837,12 @@ body::before {
 .map-house:active { transform: scale(.97); }
 
 /* Координаты домов */
-#house-0 { left: 2480px; top: 2330px; width: 400px; transform: translate(-50%, -50%); }
-#house-1 { left: 528px;  top: 2881px; transform: translate(-50%, -50%); }
-#house-2 { left: 986px;  top: 951px;  transform: translate(-50%, -50%); }
-#house-3 { left: 2083px; top: 3631px; transform: translate(-50%, -50%); }
-#house-4 { left: 3765px; top: 3931px; transform: translate(-50%, -50%); }
-#house-5 { left: 3958px; top: 500px;  transform: translate(-50%, -50%); }
+#house-0 { left: 2480px; top: 2330px; width: 216px; height: 220px; }
+#house-1 { left: 528px;  top: 2881px; width: 794px; height: 471px; }
+#house-2 { left: 986px;  top: 951px;  width: 271px; height: 223px; }
+#house-3 { left: 2083px; top: 3631px; width: 206px; height: 222px; }
+#house-4 { left: 3765px; top: 3931px; width: 349px; height: 192px; }
+#house-5 { left: 3958px; top: 500px;  width: 292px; height: 426px; }
 
 .map-house::after {
   content: '';
