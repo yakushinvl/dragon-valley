@@ -3,19 +3,56 @@
 // ─── Метаданные драконов ──────────────────────────────────────────────────────
 
 const DRAGON_META = {
-  math:    { emoji: '🔥', name: 'Дракон Математики', label: 'Математика' },
-  russian: { emoji: '📘', name: 'Дракон Русского',   label: 'Русский' },
-  logic:   { emoji: '⚡', name: 'Дракон Логики',     label: 'Логика' },
-  world:   { emoji: '🌿', name: 'Дракон Природы',    label: 'Природа' },
+  math:       { emoji: '🔥', name: 'Дракон Математики', label: 'Математика' },
+  russian:    { emoji: '📘', name: 'Дракон Русского',   label: 'Русский' },
+  logic:      { emoji: '⚡', name: 'Дракон Логики',     label: 'Логика' },
+  world:      { emoji: '🌿', name: 'Дракон Природы',    label: 'Природа' },
+  literature: { emoji: '📚', name: 'Дракон Литературы', label: 'Литература' },
+  pe:         { emoji: '🏃', name: 'Дракон Физкультуры',label: 'Физкультура' },
 };
 
 // ─── Состояние ────────────────────────────────────────────────────────────────
+
+const PROGRESS_KEY = 'dragon_progress';
+
+let localState = {
+  dragons: {
+    math:       { level: 1, xp: 0, correct_count: 0, wrong_count: 0 },
+    russian:    { level: 1, xp: 0, correct_count: 0, wrong_count: 0 },
+    logic:      { level: 1, xp: 0, correct_count: 0, wrong_count: 0 },
+    world:      { level: 1, xp: 0, correct_count: 0, wrong_count: 0 },
+    literature: { level: 1, xp: 0, correct_count: 0, wrong_count: 0 },
+    pe:         { level: 1, xp: 0, correct_count: 0, wrong_count: 0 },
+  }
+};
+
+function saveProgress() {
+  localStorage.setItem(PROGRESS_KEY, JSON.stringify(localState));
+}
+
+function loadProgressLocal() {
+  const saved = localStorage.getItem(PROGRESS_KEY);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.dragons) {
+        localState = parsed;
+      }
+    } catch (e) {
+      console.error('Ошибка загрузки прогресса:', e);
+    }
+  }
+}
+
+// Вызываем загрузку сразу
+loadProgressLocal();
 
 let currentType      = null;
 let currentTaskKind  = 'normal';
 let currentTaskText  = '';
 let currentReadText  = null;
 let currentPhotoTask = null;
+let expectedAnswer   = null; // Добавляем хранение ожидаемого ответа
 
 // ─── DOM: основные экраны ─────────────────────────────────────────────────────
 
@@ -144,7 +181,14 @@ async function apiFetch(url, options = {}) {
 async function loadDragons() {
   $dragonsContainer.innerHTML = '<div class="loading"><div class="spinner"></div>Загружаем поляну…</div>';
   const dragons = await apiFetch('/dragons');
-  renderDragons(dragons);
+  
+  // Объединяем список типов с сервера с локальным прогрессом
+  const dragonsWithProgress = dragons.map(d => {
+    const progress = localState.dragons[d.type] || { level: 1, xp: 0 };
+    return { ...d, ...progress };
+  });
+
+  renderDragons(dragonsWithProgress);
 }
 
 function renderDragons(dragons) {
@@ -171,8 +215,12 @@ function renderDragons(dragons) {
 }
 
 async function loadProgress() {
-  const { totalLevels } = await apiFetch('/progress');
-  $totalLevels.textContent = totalLevels;
+  // Считаем общую сумму уровней из локального состояния
+  let total = 0;
+  for (const type in localState.dragons) {
+    total += localState.dragons[type].level;
+  }
+  $totalLevels.textContent = total;
 }
 
 // ─── Открыть задание ──────────────────────────────────────────────────────────
@@ -191,6 +239,7 @@ async function openTask(type) {
   const data = await apiFetch(`/task/${type}`);
   $taskText.textContent       = data.task;
   $expressionText.textContent = data.expression || '';
+  expectedAnswer              = data.answer; // Сохраняем ответ для проверки
 
   currentTaskKind  = data.task_kind  || 'normal';
   currentTaskText  = data.task        || '';
@@ -280,6 +329,7 @@ async function submitAnswer() {
         body: JSON.stringify({
           type:   currentType,
           answer: parseFloat(raw.replace(',', '.')),
+          expectedAnswer: expectedAnswer, // Передаём ожидаемый ответ для сверки сервером
         }),
       });
     }
@@ -293,16 +343,38 @@ async function submitAnswer() {
 
   $submitBtn.textContent = 'Готово ✓';
 
+  const MAX_LEVEL = 5;
+
   if (data.correct) {
     flash(fieldEl, 'success');
-    const d = data.dragon;
+    
+    // Обновляем локальное состояние
+    const d = localState.dragons[currentType];
+    if (d) {
+      d.xp += (data.xpGained || 30);
+      d.correct_count = (d.correct_count || 0) + 1;
+      while (d.xp >= 100 && d.level < MAX_LEVEL) {
+        d.xp -= 100;
+        d.level++;
+      }
+      if (d.level >= MAX_LEVEL) d.xp = Math.min(d.xp, 99);
+      saveProgress();
+    }
+
     showResult('success', '🎉', 'Задание выполнено!',
-      d ? `${DRAGON_META[d.type].name}: уровень ${d.level}, опыт ${d.xp}/100\n${data.message || ''}` : (data.message || ''));
+      d ? `${DRAGON_META[currentType].name}: уровень ${d.level}, опыт ${d.xp}/100\n${data.message || ''}` : (data.message || ''));
     if (data.xpGained) {
       $xpBadge.textContent   = `+${data.xpGained} XP`;
       $xpBadge.style.display = 'inline-block';
     }
   } else {
+    // Обновляем счётчик ошибок
+    const d = localState.dragons[currentType];
+    if (d) {
+      d.wrong_count = (d.wrong_count || 0) + 1;
+      saveProgress();
+    }
+
     flash(fieldEl, 'error');
     showResult('fail', '😅', 'Не совсем…', data.message);
     $xpBadge.style.display = 'none';
@@ -854,8 +926,9 @@ async function renderQuestPanel() {
     }
     
     listEl.innerHTML = dragons.map(d => {
+      const progress = localState.dragons[d.type] || { level: 1, xp: 0 };
       const meta = DRAGON_META[d.type];
-      const status = d.level >= 5 ? '🏆 Мастер' : `Уровень ${d.level} (${d.xp} XP)`;
+      const status = progress.level >= 5 ? '🏆 Мастер' : `Уровень ${progress.level} (${progress.xp} XP)`;
       return `
         <div class="quest-item" data-type="${d.type}">
           <div class="quest-item__head">
@@ -886,8 +959,8 @@ window.mapView = {
   scale: 1,
   ox: 0,
   oy: 0,
-  WORLD_W: 2400,
-  WORLD_H: 2400,
+  WORLD_W: 4000,
+  WORLD_H: 4000,
   MAX_SCALE: 3.5,
 
   apply: function() {
@@ -1063,24 +1136,44 @@ document.addEventListener('DOMContentLoaded', () => {
     window.mapView.center();
   });
 
-  // ── Кликабельный дом ──────────────────────────────────
-  // Не даём драгу карты «съесть» клик: если пользователь начал тянуть,
-  // не считаем это кликом по дому.
-  const home = document.getElementById('map-home');
-  if (home) {
-    let downX = 0, downY = 0, moved = false;
-    home.addEventListener('mousedown', e => {
-      downX = e.clientX; downY = e.clientY; moved = false;
-    });
-    canvas.addEventListener('mousemove', e => {
-      if (Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) moved = true;
-    });
-    home.addEventListener('click', e => {
-      if (moved) { e.preventDefault(); e.stopPropagation(); return; }
-      e.stopPropagation();
-      openHomeModal();
-    });
-  }
+  // ── Кликабельные дома на карте ──────────────────────────
+  const houseMapping = {
+    'house-0': () => openHomeModal(),
+    'house-1': () => openTask('math'),
+    'house-2': () => openTask('russian'),
+    'house-3': () => openTask('logic'),
+    'house-4': () => openTask('world'),
+    'house-5': () => openTask('pe'),
+  };
+
+  let downX = 0, downY = 0, moved = false;
+  canvas.addEventListener('mousedown', e => {
+    downX = e.clientX; downY = e.clientY; moved = false;
+  });
+  // Используем уже существующий mousemove на canvas для отслеживания moved
+  // Но нам нужно убедиться, что флаг moved обновляется правильно.
+
+  Object.entries(houseMapping).forEach(([id, action]) => {
+    const houseEl = document.getElementById(id);
+    if (houseEl) {
+      houseEl.addEventListener('click', e => {
+        // Если во время нажатия мышь сместилась — это был драг карты, а не клик
+        if (moved) { e.preventDefault(); e.stopPropagation(); return; }
+        e.stopPropagation();
+        
+        // Если это не дом статистики (house-0), нужно скрыть карту и показать экран заданий
+        if (id !== 'house-0') {
+          const mapScreen = document.getElementById('map-screen');
+          const taskArea  = document.getElementById('task-area');
+          if (mapScreen && taskArea) {
+            mapScreen.style.display = 'none';
+            taskArea.style.display  = 'block';
+          }
+        }
+        action();
+      });
+    }
+  });
 });
 
 // ── Модалка дома (Сэр Дракон) ────────────────────────────────────────────────
@@ -1096,10 +1189,12 @@ function bumpHomeVisits() {
 }
 
 const DRAGON_LABELS = {
-  math:    { emoji: '🔢', name: 'Математика'  },
-  russian: { emoji: '📖', name: 'Русский язык'},
-  logic:   { emoji: '🧩', name: 'Логика'      },
-  world:   { emoji: '🌍', name: 'Окруж. мир'  },
+  math:       { emoji: '🔢', name: 'Математика'   },
+  russian:    { emoji: '📖', name: 'Русский язык' },
+  literature: { emoji: '📚', name: 'Литература'   },
+  logic:      { emoji: '🧩', name: 'Логика'       },
+  world:      { emoji: '🌍', name: 'Окруж. мир'   },
+  pe:         { emoji: '🏃', name: 'Физкультура'  },
 };
 
 async function openHomeModal() {
@@ -1124,7 +1219,12 @@ async function openHomeModal() {
     statsEl.innerHTML = '<div class="loading"><div class="spinner"></div>Считаю результаты…</div>';
     try {
       const dragons = await apiFetch('/dragons');
-      statsEl.innerHTML = renderStats(dragons);
+      // Объединяем список типов с сервера с локальным прогрессом
+      const dragonsWithProgress = dragons.map(d => {
+        const progress = localState.dragons[d.type] || { level: 1, correct_count: 0, wrong_count: 0 };
+        return { ...d, ...progress };
+      });
+      statsEl.innerHTML = renderStats(dragonsWithProgress);
     } catch (e) {
       statsEl.innerHTML = '<div class="stat-card">Не удалось загрузить статистику: ' +
                           (e?.message || 'ошибка сети') + '</div>';

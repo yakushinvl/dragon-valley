@@ -6,7 +6,7 @@ const https = require('https');
 
 const router = express.Router();
 
-const VALID_TYPES = ['math', 'russian', 'logic', 'world'];
+const VALID_TYPES = ['math', 'russian', 'logic', 'world', 'literature', 'pe'];
 const XP_REWARD   = 30;
 const MAX_LEVEL   = 5;
 
@@ -16,7 +16,10 @@ function setQueries(queries) { Q = queries; }
 
 // GET /dragons
 router.get('/dragons', (req, res) => {
-  res.json(Q.getAllDragons());
+  // Мы возвращаем только список типов и базовую информацию. 
+  // Прогресс (level, xp, counts) теперь хранится на клиенте.
+  const types = ['math', 'russian', 'logic', 'world', 'literature', 'pe'];
+  res.json(types.map(t => ({ type: t })));
 });
 
 // GET /task/:type
@@ -25,13 +28,26 @@ router.get('/task/:type', (req, res) => {
   if (!VALID_TYPES.includes(type))
     return res.status(400).json({ error: 'Недопустимый тип дракона' });
 
+  const { expression, answer } = generateExpression();
+
+  // ── Физкультура: особое задание ────────────────────────────────────
+  if (type === 'pe') {
+    return res.json({
+      task:       `Присядь 5 раз при родителе!`,
+      expression,
+      answer, // Ответ для подтверждения родителем
+      task_kind:  'pe',
+      read_text:  null,
+      photo_task: null,
+    });
+  }
+
   // ── Математика: ребёнок сам решает пример ───────────────────────────
   if (type === 'math') {
-    const { expression, answer } = generateExpression();
-    Q.upsertVerification('math', expression, answer);
     return res.json({
       task:       `Реши пример: ${expression}`,
       expression,
+      answer, // Передаём ответ клиенту для локальной проверки
       task_kind:  'math',
       read_text:  null,
       photo_task: null,
@@ -45,16 +61,12 @@ router.get('/task/:type', (req, res) => {
 
   const task = tasks[Math.floor(Math.random() * tasks.length)];
   let task_kind = task.task_kind || 'normal';
-  // Обычные задания (не чтение и не фото) теперь проверяются ИИ по тексту
   if (task_kind === 'normal') task_kind = 'text';
-
-  // Для text-заданий expression больше не нужен — храним как метку
-  const { expression, answer } = generateExpression();
-  Q.upsertVerification(type, expression, answer);
 
   res.json({
     task:       task.text,
     expression: task_kind === 'text' ? null : expression,
+    answer:     task_kind === 'text' ? null : answer, // Ответ для подтверждения взрослым
     task_kind,
     read_text:  task.read_text  || null,
     photo_task: task.photo_task || null,
@@ -63,38 +75,26 @@ router.get('/task/:type', (req, res) => {
 
 // POST /complete
 router.post('/complete', (req, res) => {
-  const { type, answer } = req.body;
-  if (!type || answer === undefined)
-    return res.status(400).json({ error: 'Нужны поля type и answer' });
+  const { type, answer, expectedAnswer } = req.body;
+  if (!type || answer === undefined || expectedAnswer === undefined)
+    return res.status(400).json({ error: 'Нужны поля type, answer и expectedAnswer' });
 
-  const v = Q.getVerification();
-  if (!v) return res.status(400).json({ error: 'Нет активного задания' });
-  if (v.type !== type)
-    return res.status(400).json({ correct: false, message: 'Тип дракона не совпадает' });
+  const userAnswer    = parseFloat(String(answer).replace(',', '.'));
+  const targetAnswer  = parseFloat(String(expectedAnswer).replace(',', '.'));
+  const correct       = Math.abs(userAnswer - targetAnswer) < 0.01;
 
-  const userAnswer = parseFloat(String(answer).replace(',', '.'));
-  const correct    = Math.abs(userAnswer - v.answer) < 0.01;
   if (!correct) {
-    Q.incWrong(type);
     return res.json({ correct: false, message: 'Неверный ответ. Попробуй ещё раз!' });
   }
 
-  const d = Q.getDragon(type);
-  let { level, xp } = d;
-  xp += XP_REWARD;
-  while (xp >= 100 && level < MAX_LEVEL) { xp -= 100; level++; }
-  if (level >= MAX_LEVEL) xp = Math.min(xp, 99);
-  Q.updateDragon(level, xp, type);
-  Q.incCorrect(type);
-
-  const updated = Q.getDragon(type);
-  res.json({ correct: true, message: 'Отлично! Задание выполнено!', dragon: updated, xpGained: XP_REWARD });
+  // Больше не обновляем БД здесь. Клиент сам обновит свой localStorage.
+  res.json({ correct: true, message: 'Отлично! Задание выполнено!', xpGained: XP_REWARD });
 });
 
 // GET /progress
 router.get('/progress', (req, res) => {
-  const { total } = Q.sumLevels();
-  res.json({ totalLevels: total });
+  // Теперь прогресс считается на клиенте. Возвращаем заглушку, чтобы не ломать старый код до обновления фронтенда.
+  res.json({ totalLevels: 0 });
 });
 
 // ── Утилита: вызов OpenRouter (текстовая проверка ответа) ────────────────────
@@ -172,21 +172,12 @@ router.post('/verify-text', async (req, res) => {
     }
 
     if (result.done) {
-      const d = Q.getDragon(type);
-      let { level, xp } = d;
-      xp += XP_REWARD;
-      while (xp >= 100 && level < MAX_LEVEL) { xp -= 100; level++; }
-      if (level >= MAX_LEVEL) xp = Math.min(xp, 99);
-      Q.updateDragon(level, xp, type);
-      Q.incCorrect(type);
       return res.json({
         correct:  true,
         message:  result.feedback || 'Отлично! Задание выполнено!',
-        dragon:   Q.getDragon(type),
         xpGained: XP_REWARD,
       });
     } else {
-      Q.incWrong(type);
       return res.json({
         correct: false,
         message: result.feedback || 'Не совсем — попробуй ещё раз!',

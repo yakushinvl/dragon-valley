@@ -194,8 +194,13 @@
           <span class="subj-arrow">›</span>
         </button>
         <button class="subj-btn" data-type="russian" onclick="openSubject('russian')">
-          <span class="subj-icon">📖</span>
+          <span class="subj-icon">📘</span>
           <span class="subj-label">Русский язык</span>
+          <span class="subj-arrow">›</span>
+        </button>
+        <button class="subj-btn" data-type="literature" onclick="openSubject('literature')">
+          <span class="subj-icon">📚</span>
+          <span class="subj-label">Литература</span>
           <span class="subj-arrow">›</span>
         </button>
         <button class="subj-btn" data-type="logic"   onclick="openSubject('logic')"  >
@@ -204,8 +209,13 @@
           <span class="subj-arrow">›</span>
         </button>
         <button class="subj-btn" data-type="world"   onclick="openSubject('world')"  >
-          <span class="subj-icon">🌍</span>
+          <span class="subj-icon">🌿</span>
           <span class="subj-label">Окруж. мир</span>
+          <span class="subj-arrow">›</span>
+        </button>
+        <button class="subj-btn" data-type="pe"      onclick="openSubject('pe')"     >
+          <span class="subj-icon">🏃</span>
+          <span class="subj-label">Физкультура</span>
           <span class="subj-arrow">›</span>
         </button>
         <div class="panel-divider"></div>
@@ -221,9 +231,24 @@
       <!-- Pannable / zoomable world map -->
       <div class="map-canvas" id="map-canvas">
         <div class="map-world">
-          <!-- Центральный дом игрока — кликабелен -->
-          <button class="map-home" id="map-home" type="button" aria-label="Твой дом">
-            <img src="center-home.jpg" alt="" draggable="false" />
+          <!-- Дома на карте -->
+          <button class="map-house" id="house-0" type="button" aria-label="Статистика">
+            <img src="houses/house_0.jpg" alt="" draggable="false" />
+          </button>
+          <button class="map-house" id="house-1" type="button" aria-label="Дом Математики">
+            <img src="houses/house_1.jpg" alt="" draggable="false" />
+          </button>
+          <button class="map-house" id="house-2" type="button" aria-label="Дом Русского языка">
+            <img src="houses/house_2.jpg" alt="" draggable="false" />
+          </button>
+          <button class="map-house" id="house-3" type="button" aria-label="Дом Логики">
+            <img src="houses/house_3.jpg" alt="" draggable="false" />
+          </button>
+          <button class="map-house" id="house-4" type="button" aria-label="Дом Окружающего мира">
+            <img src="houses/house_4.jpg" alt="" draggable="false" />
+          </button>
+          <button class="map-house" id="house-5" type="button" aria-label="Дом Физкультуры">
+            <img src="houses/house_5.jpg" alt="" draggable="false" />
           </button>
         </div>
         <!-- Мягкая виньетка по краям (визуальная граница) -->

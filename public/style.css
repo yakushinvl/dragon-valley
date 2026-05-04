@@ -799,8 +799,8 @@ body::before {
 /* The inner world that gets transformed */
 .map-world {
   position: absolute;
-  width: 2400px;
-  height: 2400px;
+  width: 4000px;
+  height: 4000px;
   transform-origin: 0 0;
   will-change: transform;
   background: url('map.png') center/100% 100% no-repeat;
@@ -814,14 +814,11 @@ body::before {
   pointer-events: none;
 }
 
-/* ── Кликабельный центральный дом на карте ───────────────── */
-.map-home {
+/* ── Дома на карте ─────────────────────────────────────── */
+.map-house {
   position: absolute;
-  /* Координаты подобраны под центральный дом на map.png */
-  left: 45.5%;
-  top:  39%;
-  width: 14%;
-  aspect-ratio: 369 / 279;     /* пропорции center-home.jpg */
+  width: 300px; /* Примерный размер */
+  aspect-ratio: 1 / 1;
   padding: 0;
   margin: 0;
   background: transparent;
@@ -830,7 +827,7 @@ body::before {
   z-index: 10;
   transition: transform .18s ease, filter .18s ease;
 }
-.map-home img {
+.map-house img {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -838,9 +835,18 @@ body::before {
   pointer-events: none;
   filter: drop-shadow(0 8px 18px rgba(0,0,0,.35));
 }
-.map-home:hover  { transform: translateY(-4px) scale(1.04); }
-.map-home:active { transform: scale(.97); }
-.map-home::after {
+.map-house:hover  { transform: translateY(-4px) scale(1.04); }
+.map-house:active { transform: scale(.97); }
+
+/* Координаты домов */
+#house-0 { left: 2480px; top: 2330px; width: 400px; transform: translate(-50%, -50%); }
+#house-1 { left: 528px;  top: 2881px; transform: translate(-50%, -50%); }
+#house-2 { left: 986px;  top: 951px;  transform: translate(-50%, -50%); }
+#house-3 { left: 2083px; top: 3631px; transform: translate(-50%, -50%); }
+#house-4 { left: 3765px; top: 3931px; transform: translate(-50%, -50%); }
+#house-5 { left: 3958px; top: 500px;  transform: translate(-50%, -50%); }
+
+.map-house::after {
   content: '';
   position: absolute;
   inset: -6%;
@@ -849,7 +855,7 @@ body::before {
   transition: border-color .25s;
   pointer-events: none;
 }
-.map-home:hover::after { border-color: rgba(255,201,72,.85); }
+.map-house:hover::after { border-color: rgba(255,201,72,.85); }
 
 /* ── Модалка дома (Сэр Дракон) ──────────────────────────── */
 .home-modal {
